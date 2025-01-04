@@ -1,0 +1,104 @@
+<html>
+<head>
+    <title>Schnelle Implementation der Gauß-Elimination ohne Pivot Suche</title>
+    <style>
+        pre {
+            background-color: #f4f4f4;
+            padding: 10px;
+            border: 1px solid #ddd;
+            overflow-x: auto;
+        }
+
+        code {
+            font-family: Consolas, "Courier New", monospace;
+        }
+    </style>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+</head>
+<body>
+<!--HTML--><span class="math-tex"><span class="math-tex">\(\textbf{Hinweis: }\text{Das ist wieder eine längere Recherche und eher keine Frage. Außerdem geht es auch um Rechnerarchitektur.} \\ \text{Also kann man das ohne weiteres wahrscheinlich nicht direkt beantworten.} \\ \text{Es ist aber interessant. Versprochen!} \)</span></span><br />
+<br />
+<span class="math-tex">\(\textbf{Exkurs:}\\ \text{Wie implementiert man die Gauß-Elimination ohne Pivot-Suche auf einer modernen CPU (Intel/AMD x86-64) möglichst effizient?} \\ \text{Zur Vereinfachung werden nur reelle und quadratische Matrizen benutzt.}\)</span><br />
+<br />
+<span class="math-tex">\(\textbf{Antwort:} \\ \text{Routinen wie Matrix-Matrix Multiplikation wurden unter dem Namen }\textit{Basic Linear Algebra Subroutines/BLAS}\text{ standardisiert.} \\ \text{Das Ziel ist, z.B. die Gauß-Elimination ohne Pivotsuche nicht vollständig selber, sondern mithilfe von wenigen optimierten BLAS Routinen zu schreiben [1].} \\ \text{Python Bibliotheken wie Numpy benutzen BLAS Umsetzungen wie das }\textit{LAPACK}\text{ Projekt [2].}\)</span><br />
+<br />
+<span class="math-tex">\(\text{Die BLAS Routinen, die für uns relevant sind, werden 3 Kategorien mit steigendem Arbeitsaufwand und jeweils besserer CPU-Effizienz zugeordnet:}\\ \textit{BLAS 1}\text{ mit }\mathcal{O}(n)\text{ flops (z.B. Std.skalarprodukt, Vektornormen), } \\ \textit{BLAS 2}\text{ mit }\mathcal{O}(n^2)\text{ flops (z.B. Matrix-Vektor Mult., Rückwärtssubst.) und } \\ \textit{BLAS 3}\text{ mit }\mathcal{O}(n^3)\text{ flops (z.B. Matrix-Matrix Mult.) für } n \to \infty \text{.}\)</span><span class="math-tex">\(\text{Wir benutzen ab jetzt, dass } A \cdot B+C \text{ mit }\textit{Blockweiser-Multiplikation}\text{ [1] als BLAS 3 Routine umgesetzt werden kann.}\)</span>
+<h2>Eine Baseline Umsetzung.</h2>
+Wir müssen diese einfache Umsetzung später in der Effizienten benutzen.&nbsp;Dafür muss sie auch für&nbsp;<span class="math-tex">\(m *n\)</span>&nbsp;Matrizen mit&nbsp;<span class="math-tex">\(m \ge n\)</span> funktionieren.<br />
+Man erhält also eine Faktorisierung&nbsp;<span class="math-tex">\(A = L U \)</span>&nbsp;mit&nbsp;<span class="math-tex">\(A \in M(m*n, \mathbb{R}), L \in M(m*n, \mathbb{R}), U \in M(n*n, \mathbb{R})\)</span>.<br />
+<br />
+Da&nbsp;<span class="math-tex">\(L,U\)</span>&nbsp;direkt in&nbsp;<span class="math-tex">\(A\)</span>&nbsp;geschrieben werden, extrahiert die folgende Hilfsfunktion diese aus der Matrix:<br />
+<img alt="unpack.png" height="226" src="https://studip.uni-passau.de/studip/sendfile.php?type=0&amp;file_id=ce819607c8c2009265b095cfee841985&amp;file_name=unpack.png" width="540" /><br />
+<br />
+Dann die Textbuchmethode:<br />
+<img alt="basic gaussian elimination[4].png" height="315" src="https://studip.uni-passau.de/studip/sendfile.php?type=0&amp;file_id=f574cddf02a3bb02a0c8949adf26c32e&amp;file_name=basic+gaussian+elimination%5B4%5D.png" width="700" />
+<div><em>Algorithmus&nbsp;1. Eine Baseline. Die Gauß-Elimination ohne partielle Suche aus der Vorlesung. L und U werden in A gespeichert.</em></div>
+
+<h2>Eine BLAS-1+2 Umsetzung.</h2>
+
+<p>Die erste Verbesserung ist, naiv die Schleifen durch <em>BLAS-</em>Routinen zu ersetzen.</p>
+
+<p>Konkret kann</p>
+
+<ul>
+	<li>die L-Schleife durch eine elementweise Vektor-Skalar Division ersetzt werden (<em>BLAS 1</em>)</li>
+	<li>und die U-Schleife durch ein Rang-1-Update ersetzt werden (<em>BLAS 2</em>) [3]</li>
+</ul>
+
+<h5><img alt="blas 2 gaussian elimination[4].png" height="257" src="https://studip.uni-passau.de/studip/sendfile.php?type=0&amp;file_id=a0baee1fec99fa07b9a36c4eef071c14&amp;file_name=blas+2+gaussian+elimination%5B4%5D.png" width="700" /></h5>
+
+<p><em>Algorithmus 2. Eine BLAS-</em>1+2<em> Umsetzung. Die Schleifen wurden durch BLAS-1 und BLAS-2 Routinen ersetzt.</em></p>
+
+<h2>Eine BLAS-3 Umsetzung.</h2>
+Nun wandeln wir die Gauß-Elimination in einen <em>Block-Algorithmus</em> um.<br />
+Ein <em>Block-Algorithmus</em> ordnet die Reihenfolge der Operationen um. Schematisch werden die Operationen <strong>a, b, a, b</strong> in <strong>a, a, b, b</strong> umgewandelt.<br />
+<br />
+Der Grund dafür ist größtenteils dieser:<br />
+Im&nbsp;<em>Memory Prefetching</em>&nbsp;werden von der CPU automatisch Matrixkoeffizienten aus dem langsamen Hautspeicher (RAM) in einen schnellen Speicher (L2/L1 Cache) auf dem CPU-Chip geladen.<br />
+In einer aktuellen Raptor-Lake CPU von Intel ist der schnelle L2-Speicher 2MB groß und pro Clock-Zyklus können ca. 40 Byte nach einer Wartezeit von ca. 15 Zyklen geladen werden.<br />
+Im Gegensatz dazu ist der Hauptspeicher &gt;8 GB groß und pro Clock-Zyklus können ca. 8 Byte nach einer Wartezeit von ca. 380-512 Zyklen geladen werden [4].<br />
+Daten die unmittelbar gebraucht und benutzt werden sind die lokale Umgebung, also <em>Speicherlokal</em>.&nbsp;<br />
+Wenn man diese sofort auf einmal benutzt,&nbsp;profitiert man davon, dass der ganze Block bereits im viel schnelleren L2/L1 Speicher auf der CPU ist.
+<p>Hinweis: Auch Thread-Parallelismus (mehrere Anweisungen in einem Taktzyklus statt nur eine) und Vektorisierung (eine Anweisung arbeitet mit mehreren Floats) können z.B. zusätzlich einwirken.<br />
+<br />
+Die Idee für die Gauß-Elimination ist jetzt, immer&nbsp;<span class="math-tex">\(b \text{ (die Blockgröße)}\)</span>&nbsp;Rang-1-Updates aus <em>Zeile 9, Algorithmus 2</em>&nbsp;zusammenzufassen und so die <em>Speicherlokalität</em> zu verbessern.<br />
+Nach k Schritten von der Schleife in <em>Zeile 4, Algorithmus 2</em> sind wir in der folgenden Situation:&nbsp;<br />
+<span class="math-tex">\(A = \left( \begin{array}{ccc} A_{11} &amp; A_{12} &amp; A_{13} \\ A_{21} &amp; A_{22} &amp; A_{23} \\ A_{31} &amp; A_{32} &amp; A_{33} \end{array} \right) = \left[ \begin{array}{ccc} L_{11} &amp; 0 &amp; 0 \\ L_{21} &amp; I &amp; 0 \\ L_{31} &amp; 0 &amp; I \end{array} \right] \cdot \left[ \begin{array}{ccc} U_{11} &amp; U_{21} &amp; U_{31} \\ 0 &amp; \tilde{A}_{22} &amp; \tilde{A}_{23} \\ 0 &amp; \tilde{A}_{32} &amp; \tilde{A}_{33} \end{array} \right] \\ \text{Wir haben also eine unfertige Faktorisierung mit Matrizen } L_{11}, L_{21}, L_{31}, U_{11}, U_{21}, U_{31}, \tilde{A}_{22}, \tilde{A}_{23}, \tilde{A}_{32}, \tilde{A}_{33} \text{.}\)</span>.<br />
+<br />
+Wir wollen uns jetzt einen solchen Block-Schritt&nbsp;anschauen.<br />
+Erstmal können wir unseren einfachen <em>Algorithmus 2</em>&nbsp;auf eine rechteckige Teilmatrix anwenden:<br />
+<span class="math-tex">\(\left( \begin{matrix} \tilde{A}_{22} \\ \tilde{A}_{23} \end{matrix} \right) = \left( \begin{matrix} L_{22} \\ L_{23} \end{matrix} \right)U_{22}\)</span>.<br />
+Jetzt kann man einfach nachprüfen, dass gilt:<br />
+<span class="math-tex">\(\left( \begin{matrix} \tilde{A}_{22} &amp;&amp; \tilde{A}_{23} \\ \tilde{A}_{32} &amp;&amp; \tilde{A}_{33} \end{matrix} \right) = \left( \begin{matrix} L_{22}U_{22} &amp;&amp; \tilde{A}_{23} \\ L_{32}U_{22} &amp;&amp; \tilde{A}_{33} \end{matrix} \right) = \left( \begin{matrix} L_{22} &amp;&amp; 0 \\ L_{32} &amp;&amp; I \end{matrix} \right) \left( \begin{matrix} U_{22} &amp;&amp; L_{22}^{-1}\tilde{A}_{23} \\ 0 &amp;&amp; \tilde{A}_{33} - L_{32}L_{22}^{-1}\tilde{A}_{23} \end{matrix} \right) \\ = \left( \begin{matrix} L_{22} &amp;&amp; 0 \\ L_{32} &amp;&amp; I \end{matrix} \right) \left( \begin{matrix} U_{22} &amp;&amp; U_{23} \\ 0 &amp;&amp; \tilde{A}_{33} - L_{32}U_{23} \end{matrix} \right) = \left( \begin{matrix} L_{22} &amp;&amp; 0 \\ L_{32} &amp;&amp; I \end{matrix} \right) \left( \begin{matrix} U_{22} &amp;&amp; U_{23} \\ 0 &amp;&amp; \hat{A} \end{matrix} \right)\)</span>&nbsp;<br />
+Hier kommt also nur noch zusätzlich eine Matrix-Matrix Multiplikation (<em>BLAS-3</em>) vor.<br />
+<br />
+Zusammenfassung:<br />
+<span class="math-tex">\(A = \left( \begin{array}{ccc} A_{11} &amp; A_{12} &amp; A_{13} \\ A_{21} &amp; A_{22} &amp; A_{23} \\ A_{31} &amp; A_{32} &amp; A_{33} \end{array} \right) = \left[ \begin{array}{ccc} L_{11} &amp; 0 &amp; 0 \\ L_{21} &amp; I &amp; 0 \\ L_{31} &amp; 0 &amp; I \end{array} \right] \cdot \left[ \begin{array}{ccc} U_{11} &amp; U_{21} &amp; U_{31} \\ 0 &amp; \tilde{A}_{22} &amp; \tilde{A}_{23} \\ 0 &amp; \tilde{A}_{32} &amp; \tilde{A}_{33} \end{array} \right] \\ = \left[ \begin{array}{ccc} L_{11} &amp; 0 &amp; 0 \\ L_{21} &amp; L_{22} &amp; 0 \\ L_{31} &amp; L_{32} &amp; I \end{array} \right] \cdot \left[ \begin{array}{ccc} U_{11} &amp; U_{21} &amp; U_{31} \\ 0 &amp; U_{22} &amp; U_{23} \\ 0 &amp; 0 &amp; \hat{A} \end{array} \right] \\\)</span><br />
+Dann können wir den Block-Schritt wiederholen und auf&nbsp;<span class="math-tex">\(\hat{A}\)</span>&nbsp;anwenden.<br />
+<br />
+Genau das kann man jetzt implementieren. In der naiven Implementierung müssen&nbsp;die Matrizen ein Vielfaches von&nbsp;<span class="math-tex">\(b\)</span>&nbsp;groß sein.<br />
+<img alt="block gaussian elimination.png" height="321" src="https://studip.uni-passau.de/studip/sendfile.php?type=0&amp;file_id=d71e14929a5cda28fd6a268fb2f71a0a&amp;file_name=block+gaussian+elimination.png" width="700" /></p>
+
+<p><em>Algorithmus 3. Eine BLAS-</em>3<em>&nbsp;blockweise Umsetzung. Intern wird die BLAS-2 Umsetzung in den Blockschritten benutzt.</em></p>
+
+<h2>Eine finale Umsetzung.</h2>
+Zuletzt können wir nutzen, dass wir im Blockschritt&nbsp;<span class="math-tex">\(U\)</span>&nbsp;nicht brauchen und deshalb auch nicht kopieren müssen.<br />
+Somit müssen wir nur&nbsp;<span class="math-tex">\(L\)</span>&nbsp;aus&nbsp;<span class="math-tex">\(A\)</span>&nbsp;kopieren, um die Diagonale auf&nbsp;<span class="math-tex">\(1\text{er}\)</span>&nbsp;zu setzen.<br />
+Außerdem ist das Invers einer linken unteren Dreiecksmatrix einfach zu berechnen und wir brauchen dazu keine Gauß-Algorithmus!<br />
+Dann erhalten wir die finale Umsetzung:<br />
+<img alt="final gaussian elimination.png" height="403" src="https://studip.uni-passau.de/studip/sendfile.php?type=0&amp;file_id=cd33f6b049f492402cf7b0d77aa781e9&amp;file_name=final+gaussian+elimination.png" width="700" />
+<p><em>Algorithmus 4. Eine BLAS-</em>3<em>&nbsp;blockweise Umsetzung. Es wird eine Kopie von&nbsp;<span class="math-tex">\(U\)</span>und ein Gauß-Invers eingespart.<br />
+Das sollte da ja eh nicht drinnen sein nachdem wir das gerade implementieren.</em></p>
+
+<h2>Ein Benchmark.</h2>
+Die folgenden Messungen wurden auf einem&nbsp;<em>Intel 13th Gen Core i7-13700K</em>&nbsp;mit <em>pytest-benchmark</em>&nbsp;und zufälligen&nbsp;<span class="math-tex">\(128*128\)</span> Matrizen gemacht.<span class="math-tex">\(\begin{array}{|l|r|r|r|r|r|r|r|r|r|} \hline \text{Name (time in $\mu$s)} &amp; \text{Min} &amp; \text{Max} &amp; \text{Mean} &amp; \text{StdDev} &amp; \text{Median} \\ \hline \text{test_block_size_32_benchmark} &amp; \text{691.9970 (1.0)} &amp; \text{1,010.0440 (1.0)} &amp; \text{717.3830 (1.0)} &amp; \text{14.6818 (1.0)} &amp; \text{714.8130 (1.0)} \\ \hline \text{test_blas_2_benchmark} &amp; \text{1,127.3670 (1.63)} &amp; \text{1,262.1040 (1.25)} &amp; \text{1,160.7344 (1.62)} &amp; \text{32.1027 (2.19)} &amp; \text{1,138.9430 (1.59)} \\ \hline \text{test_basic_benchmark} &amp; \text{133,056.2490 (192.28)} &amp; \text{147,877.8110 (146.41)} &amp; \text{137,090.2851 (191.10)} &amp; \text{4,572.5573 (311.44)} &amp; \text{136,061.6575 (190.35)} \\ \hline \end{array}\)</span>
+
+<h2>Code.</h2>
+
+<p>Unit-Tests, Benchmarks und der Code sind verfügbar unter:&nbsp;<a class="link-extern" href="https://github.com/theblobinthesky/Fast-Gauss-Elimination" rel="noreferrer noopener" target="_blank">https://github.com/theblobinthesky/Fast-Gauss-Elimination</a></p>
+<br />
+<span class="math-tex">\(\text{Quellen:} \\ \begin{array}{l} [1] &amp; \text{J. W. Demmel, }Applied\text{ }Numerical\text{ }Linear\text{ }Algebra \text{, 1996, ch. 2, sec. 2.6.1} \\[] [2] &amp; \text{"API Reference 2.0 (stable)," }Numpy\text{ Documentation,} \\ &amp; \text{numpy.org/doc/stable/reference/generated/numpy.linalg.qr.html} \\ &amp; \text{[Accessed: 02 Jul. 2024].} \\[] [3] &amp; \text{J. W. Demmel, }Applied\text{ }Numerical\text{ }Linear\text{ }Algebra \text{, 1996, ch. 2, sec. 2.6.3.} \\[] [4] &amp; \text{chipsandcheese.com/2022/08/23/a-preview-of-raptor-lakes-improved-l2-caches/} \\ &amp; \text{[Accessed: 02 Jul. 2024].} \end{array}\)</span>
+</body>
+</html>
