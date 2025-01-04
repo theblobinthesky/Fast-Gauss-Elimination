@@ -1,4 +1,5 @@
-Eine effiziente Implementation des Gauß-Algorithmus ohne Pivot-Suche in python3.</br>
-Benötigt wird für den Code und die Tests: <code>pip install numpy scipy pytest pytest-benchmark</code></br>
-Tests ausführen: <code>python3 -m pytest</code></br>
-Die zugehörige Erklärung: Fehlt noch.
+An efficient implementation of the gauss algorithm without pivot-search in python3.</br>
+Prerequisites for the code and the tests: <code>pip install numpy scipy pytest pytest-benchmark</code></br>
+Run tests: <code>python3 -m pytest</code></br>
+[View the full explaination here](ARTICLE.html)
+
